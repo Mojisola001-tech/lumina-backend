@@ -1,7 +1,5 @@
 # Node
 node_modules/
-.env
-.env.local
 .env*.local
 
 # TypeScript compiled output
@@ -12,3 +10,8 @@ dist/
 # OS
 .DS_Store
 Thumbs.db
+branch_structure.json
+temp_auto_push.bat
+temp_interactive_push.bat
+.gitignore
+config.bat

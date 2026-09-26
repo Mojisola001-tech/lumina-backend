@@ -19,16 +19,27 @@ import { getContractSchema, getCustomEvents, type CustomEventFilter } from './cu
 import { getAssetDetail } from './assets';
 import { getOperationsByAsset, searchTransactions } from './search';
 import type { LedgerNotifier } from './pubsub';
+import { ANONYMOUS_CALLER, type ApiCaller } from './auth';
 
 export interface BaseContext {
   pool: Pool;
   loaders?: RequestLoaders;
   /** Present for websocket connections; absent for plain HTTP queries. */
   notifier?: LedgerNotifier;
+  /**
+   * Who this request is attributed to, resolved once by the auth middleware.
+   *
+   * Websocket connections are not authenticated — they cannot carry a header —
+   * so they are always the anonymous caller until that path is built out.
+   */
+  caller?: ApiCaller;
 }
 
-export function createContext(pool: Pool, extra: Omit<Context, 'pool' | 'loaders'> = {}): Context {
-  return { pool, loaders: createLoaders(pool), ...extra };
+export function createContext(
+  pool: Pool,
+  extra: Partial<Omit<Context, 'pool' | 'loaders'>> = {}
+): Context {
+  return { pool, loaders: createLoaders(pool), caller: ANONYMOUS_CALLER, ...extra };
 }
 
 /**
