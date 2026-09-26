@@ -133,6 +133,27 @@ export async function getApiKey(
 }
 
 /**
+ * Retrieve a key by its hash, and only by its hash.
+ *
+ * Deliberately distinct from `getApiKey`, which infers id-versus-hash from the
+ * shape of its argument. That inference is fine for a human typing a CLI
+ * argument, but the request path already knows it holds a digest and must not
+ * have it second-guessed: a SHA-256 hash is hex and could in principle be all
+ * digits, in which case the guess would silently look up an id and miss.
+ */
+export async function findApiKeyByHash(pool: Pool, keyHash: string): Promise<ApiKeyRecord | null> {
+  const query = `
+    SELECT id, key_hash, key_prefix, label, rate_limit, created_at, revoked_at, updated_at
+    FROM api_keys
+    WHERE key_hash = $1
+  `;
+
+  const res = await pool.query(query, [keyHash]);
+  if (res.rows.length === 0) return null;
+  return mapApiKeyRow(res.rows[0]);
+}
+
+/**
  * Revoke an API key by setting its revoked_at timestamp.
  */
 export async function revokeApiKey(

@@ -7,7 +7,7 @@
     "dev": "ts-node src/index.ts",
     "build": "tsc && cp src/schema.graphql dist/schema.graphql",
     "start": "node dist/index.js",
-    "test": "node --require ts-node/register --test src/db.test.ts src/horizon.test.ts src/pubsub.test.ts src/subscriptions.test.ts src/customEvents.test.ts src/search.test.ts src/assets.test.ts src/queryCount.test.ts",
+    "test": "node --require ts-node/register --test src/db.test.ts src/horizon.test.ts src/pubsub.test.ts src/subscriptions.test.ts src/customEvents.test.ts src/search.test.ts src/queryCount.test.ts src/auth.test.ts src/keys.test.ts",
     "codegen": "graphql-codegen --config codegen.yml",
     "schema:check": "node scripts/check-schema-snapshot.js",
     "load:subscriptions": "node --require ts-node/register scripts/load-subscriptions.ts",

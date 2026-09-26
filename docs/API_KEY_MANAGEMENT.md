@@ -2,11 +2,53 @@
 
 This CLI enables operators to manage API keys for the Lumina GraphQL server without writing raw SQL.
 
+## Using a key
+
+Keys are read from the `x-api-key` header on HTTP requests to `/graphql`:
+
+```bash
+curl -H "x-api-key: lum_abc123…" http://localhost:4000/graphql \
+  -d '{"query":"{ latestLedger { sequence } }"}'
+```
+
+The server resolves the key to a **caller** — id, label, and rate limit — and
+attaches it to the GraphQL context. Every request without a key is served as an
+anonymous caller, so existing clients are unaffected. To require a key:
+
+```bash
+ALLOW_ANONYMOUS_ACCESS=false
+```
+
+An unrecognised value is treated as `false`: a typo in a security switch must not
+leave the API open. The header name is configurable with `API_KEY_HEADER`.
+
+A key that is unknown, revoked, or missing while anonymous access is disabled is
+refused with HTTP 401 and a GraphQL-shaped body:
+
+```json
+{
+  "errors": [
+    {
+      "message": "Invalid or revoked API key.",
+      "extensions": { "code": "UNAUTHENTICATED" }
+    }
+  ]
+}
+```
+
+Unknown and revoked deliberately share one message — telling them apart would
+confirm that a guessed key really was issued and then cut off. The distinction is
+in the server log and in `lumina_graphql_auth_total{caller,outcome}` instead.
+
+Keys are never logged and never echoed back in a response.
+
 ## Security Model
 
 - **No Plaintext Storage**: Plaintext keys are generated with 256 bits of cryptographically secure entropy (`crypto.randomBytes(32)`), formatted with a `lum_` prefix. Only their SHA-256 hash is written to the `api_keys` table.
 - **Printed Once**: A newly created key is displayed exactly once in terminal output upon creation.
 - **Irrecoverable**: When an operator queries an existing key (via `list` or `show`), the CLI will refuse to show the plaintext key because only the hash is retained in the database.
+- **Never Logged**: The GraphQL server reads a key, hashes it, compares the hash and discards the key. No log line, metric label or error body contains the key or its hash.
+- **Constant-Time Comparison**: The stored hash is re-checked with `crypto.timingSafeEqual` before the caller is trusted, so the accept/reject decision does not depend on where two digests first differ.
 
 ## Database Migration
 

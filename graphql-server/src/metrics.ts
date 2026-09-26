@@ -45,6 +45,13 @@ export const listenerConnected = new Gauge({
   registers: [registry],
 });
 
+export const authAttempts = new Counter({
+  name: 'lumina_graphql_auth_total',
+  help: 'GraphQL requests by presented credential and authentication outcome.',
+  labelNames: ['caller', 'outcome'] as const,
+  registers: [registry],
+});
+
 // Pool saturation is the metric that explains a latency cliff nothing else
 // accounts for: queries queue invisibly once every connection is checked out.
 export const dbPoolTotal = new Gauge({

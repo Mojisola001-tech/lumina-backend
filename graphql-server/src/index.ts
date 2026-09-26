@@ -15,6 +15,12 @@ import { to as copyTo } from 'pg-copy-streams';
 import { Context, createContext, resolvers } from './resolvers';
 import { LedgerNotifier, SubscriberLimitError } from './pubsub';
 import { subsystem } from './logger';
+import {
+  DEFAULT_API_KEY_HEADER,
+  apiKeyAuthMiddleware,
+  callerFromLocals,
+  parseAllowAnonymous,
+} from './auth';
 import { buildServerHealth, metricsPlugin, samplePool, serverHealthStatusCode } from './observability';
 import { v4 as uuidv4 } from 'uuid'; // TODO: Ensure 'uuid' is a dependency
 
@@ -47,9 +53,8 @@ const DATABASE_URL = process.env.DATABASE_URL ?? 'postgresql://localhost:5432/lu
 const PORT = parseInt(process.env.PORT ?? '4000', 10);
 const MAX_SUBSCRIPTIONS = parseInt(process.env.MAX_SUBSCRIPTIONS ?? '500', 10);
 const SUBSCRIPTION_QUEUE_LIMIT = parseInt(process.env.SUBSCRIPTION_QUEUE_LIMIT ?? '64', 10);
-const DB_POOL_MAX = process.env.DB_POOL_MAX ? parseInt(process.env.DB_POOL_MAX, 10) : undefined;
-const DB_POOL_IDLE_TIMEOUT = process.env.DB_POOL_IDLE_TIMEOUT ? parseInt(process.env.DB_POOL_IDLE_TIMEOUT, 10) : undefined;
-const DB_POOL_CONNECTION_TIMEOUT = process.env.DB_POOL_CONNECTION_TIMEOUT ? parseInt(process.env.DB_POOL_CONNECTION_TIMEOUT, 10) : undefined;
+const API_KEY_HEADER = (process.env.API_KEY_HEADER ?? DEFAULT_API_KEY_HEADER).toLowerCase();
+const ALLOW_ANONYMOUS_ACCESS = parseAllowAnonymous(process.env.ALLOW_ANONYMOUS_ACCESS);
 
 const pool = new Pool({ 
   connectionString: DATABASE_URL,
@@ -87,6 +92,11 @@ async function main() {
   const wsCleanup = useServer(
     {
       schema,
+      // Subscriptions connect over a websocket and cannot present an HTTP
+      // header, so they are always the anonymous caller. They are deliberately
+      // not authenticated yet; when `ALLOW_ANONYMOUS_ACCESS=false` this is the
+      // path that will need a key, and it is why that switch is documented as
+      // covering queries only until then.
       context: async (): Promise<Context> => createContext(pool, { notifier }),
       onError: (_ctx: unknown, _message: unknown, errors: readonly Error[]) => {
         for (const error of errors) {
@@ -233,9 +243,28 @@ async function main() {
   });
 
   const middleware = [
+    // CORS first so a 401 from the auth layer still carries the headers a
+    // browser needs to read the error body.
     cors(),
+    // Ahead of the body parser and the GraphQL layer both. The parser is
+    // skipped for an unauthenticated request, so an anonymous caller cannot
+    // make the server buffer an arbitrary payload, and a request that cannot be
+    // attributed to a caller never reaches a resolver.
+    apiKeyAuthMiddleware({ pool, allowAnonymous: ALLOW_ANONYMOUS_ACCESS, headerName: API_KEY_HEADER }),
     express.json(),
-    expressMiddleware(server, { context: async () => createContext(pool) }),
+    expressMiddleware(server, {
+      context: async ({ res }): Promise<Context> => {
+        const caller = callerFromLocals(res.locals);
+        if (!caller) {
+          // The auth middleware always publishes a caller — anonymous included.
+          // Absent here means it was not mounted on this route, and falling
+          // back to the anonymous identity would quietly serve an API that was
+          // configured to require keys.
+          throw new Error('API key auth middleware did not run for this route');
+        }
+        return createContext(pool, { caller });
+      },
+    }),
   ];
   app.use('/graphql', ...middleware);
   app.use('/', ...middleware);
@@ -249,6 +278,8 @@ async function main() {
       subscriptions: `ws://localhost:${PORT}/graphql`,
       health: `http://localhost:${PORT}/health`,
       metrics: `http://localhost:${PORT}/metrics`,
+      apiKeyHeader: API_KEY_HEADER,
+      anonymousAccess: ALLOW_ANONYMOUS_ACCESS,
       database: redactUrl(DATABASE_URL),
       dbPoolMax: DB_POOL_MAX ?? 10,
       dbPoolIdleTimeout: DB_POOL_IDLE_TIMEOUT ?? 10000,
