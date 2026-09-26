@@ -19,7 +19,7 @@ Breaking changes are rare and advance the major version. Deprecation notices app
 ## [Unreleased]
 
 ### Added
-- Consumer documentation for API key authentication, rate limit headers, the anonymous tier, and the migration timeline (#84)
+- API key authentication middleware: a key in the `x-api-key` header is resolved to a caller identity and attached to the GraphQL context. Anonymous access stays the default and is controlled by `ALLOW_ANONYMOUS_ACCESS`. Rejections are answered with 401 before a query is parsed, the key is never logged or echoed, and the stored hash is compared in constant time
 - Resolver integration tests against real database (#122)
 - Consumer-facing GraphQL API documentation (#121)
 - Versioning policy and release workflow (#118)
